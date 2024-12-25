@@ -9,96 +9,74 @@ from scipy.sparse.linalg import spsolve
 
 from os import path
 
-def laplacian_matrix(n, m):
-    """Generate the Poisson matrix. 
-
-    Refer to: 
+def laplacian_matrix(background_high, background_width):
+    """Generate the Poisson matrix.  
     https://en.wikipedia.org/wiki/Discrete_Poisson_equation
-
-    Note: it's the transpose of the wiki's matrix 
+    Au = b 
+    divide the object image  into [row1, row2, ... row[object_high]] as array b
     """
-    mat_D = scipy.sparse.lil_matrix((m, m))
+    mat_D = scipy.sparse.lil_matrix((background_width, background_width))
     mat_D.setdiag(-1, -1)
     mat_D.setdiag(4)
     mat_D.setdiag(-1, 1)
         
-    mat_A = scipy.sparse.block_diag([mat_D] * n).tolil()
+    mat_A = scipy.sparse.block_diag([mat_D] * background_high).tolil()
     
-    mat_A.setdiag(-1, 1*m)
-    mat_A.setdiag(-1, -1*m)
+    mat_A.setdiag(-1, 1 * background_width)
+    mat_A.setdiag(-1, -1 * background_width)
     
     return mat_A
 
 
-def poisson_edit(object, background, mask):
+def poisson_edit(target_object, background, target_mask):
     """The poisson blending function. 
 
     Refer to: 
     Perez et. al., "Poisson Image Editing", 2003.
     """
 
-    # Assume: 
-    # target is not smaller than source.
-    # shape of mask is same as shape of target.
     y_max, x_max = background.shape[:-1]
     y_min, x_min = 0, 0
 
-    x_range = x_max - x_min
-    y_range = y_max - y_min
-        
-    mask = mask[y_min:y_max, x_min:x_max]    
-    mask[mask != 0] = 1
-    #mask = cv2.threshold(mask, 127, 1, cv2.THRESH_BINARY)
+    background_width = x_max - x_min
+    background_high = y_max - y_min
     
-    mat_A = laplacian_matrix(y_range, x_range)
+    mat_A = laplacian_matrix(background_high, background_width)
 
-    # for \Delta g
-    laplacian = mat_A.tocsc()
+    laplacian = mat_A.tocsc() # convert lil_matrix to csc_matrix
 
     # set the region outside the mask to identity    
-    for y in range(1, y_range - 1):
-        for x in range(1, x_range - 1):
-            if mask[y, x] == 0:
-                k = x + y * x_range
+    for y in range(1, background_high - 1):
+        for x in range(1, background_width - 1):
+            if target_mask[y, x] == 0:
+                k = x + y * background_width
                 mat_A[k, k] = 1
                 mat_A[k, k + 1] = 0
                 mat_A[k, k - 1] = 0
-                mat_A[k, k + x_range] = 0
-                mat_A[k, k - x_range] = 0
-
-    # corners
-    # mask[0, 0]
-    # mask[0, y_range-1]
-    # mask[x_range-1, 0]
-    # mask[x_range-1, y_range-1]
+                mat_A[k, k + background_width] = 0
+                mat_A[k, k - background_width] = 0
 
     mat_A = mat_A.tocsc()
 
-    mask_flat = mask.flatten()    
-    for channel in range(object.shape[2]):
-        object_flat = object[y_min:y_max, x_min:x_max, channel].flatten()
+    mask_flat = target_mask.flatten()    
+    for channel in range(target_object.shape[2]):
+        object_flat = target_object[y_min:y_max, x_min:x_max, channel].flatten()
         background_flat = background[y_min:y_max, x_min:x_max, channel].flatten()        
 
-        #concat = source_flat*mask_flat + target_flat*(1-mask_flat)
-        
-        # inside the mask:
-        # \Delta f = div v = \Delta g       
-        alpha = 1
-        mat_b = laplacian.dot(object_flat)*alpha
+        # calculate matrix b by 4 * pixel(i,j) - pixel(i-1, j) - pixel(i+1, j) - pixel(i, j-1) - pixel(i, j+1)
+        mat_b = laplacian.dot(object_flat)
 
         # outside the mask:
-        # f = t
         mat_b[mask_flat==0] = background_flat[mask_flat==0]
         
         x = spsolve(mat_A, mat_b)
         #print(x.shape)
-        x = x.reshape((y_range, x_range))
+        x = x.reshape((background_high, background_width))
         #print(x.shape)
         x[x > 255] = 255
         x[x < 0] = 0
         x = x.astype('uint8')
-        #x = cv2.normalize(x, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        #print(x.shape)
+        print(x.shape)
 
         background[y_min:y_max, x_min:x_max, channel] = x
 
@@ -108,14 +86,18 @@ def main():
     scr_dir = './input_data'
     out_dir = scr_dir
     i = 2
-    object = cv2.imread(path.join(scr_dir, f"target_object{i}.png")) 
-    background = cv2.imread(path.join(scr_dir, f"background{i}.jpg"))    
-    mask = cv2.imread(path.join(scr_dir, f"target_mask{i}.png"), 
+    target_object = cv2.imread(path.join(scr_dir, f"{i}target_object.png")) 
+    background = cv2.imread(path.join(scr_dir, f"{i}background.jpg"))    
+    target_mask = cv2.imread(path.join(scr_dir, f"{i}target_mask.png"), 
                       cv2.IMREAD_GRAYSCALE) 
 
-    result = poisson_edit(object, background, mask)
+    # Check unique values in the mask
+    unique_values = np.unique(target_mask)
+    print(f"Unique values in the target mask: {unique_values}")
+    
+    result = poisson_edit(target_object, background, target_mask)
 
-    cv2.imwrite(path.join(out_dir, f"possion{i}.png"), result)
+    cv2.imwrite(path.join(out_dir, f"{i}possion.png"), result)
     
 
 if __name__ == '__main__':

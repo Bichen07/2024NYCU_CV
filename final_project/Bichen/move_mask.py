@@ -15,8 +15,8 @@ class MaskMover():
         self.offset_y = 0
         self.dragging = False
         self.window_name = "Move Mask (Left mouse to move, 's' to save, 'q' to quit)"
-        self.result_mask = np.zeros_like(self.image, dtype=np.uint8)
-        self.result_object = np.zeros_like(self.image, dtype=np.uint8)
+        self.target_mask = np.zeros_like(self.image, dtype=np.uint8)
+        self.target_object = np.zeros_like(self.image, dtype=np.uint8)
 
     def move_mask(self):
         def draw_overlay():
@@ -49,10 +49,10 @@ class MaskMover():
             mask_crop_x1 = max(0, -self.offset_x)
             mask_crop_x2 = mask_crop_x1 + (mask_x2 - mask_x1)
             if mask_y1 < mask_y2 and mask_x1 < mask_x2:
-                self.result_mask[mask_y1:mask_y2, mask_x1:mask_x2] = cv2.merge([self.mask, self.mask, self.mask])[
+                self.target_mask[mask_y1:mask_y2, mask_x1:mask_x2] = cv2.merge([self.mask, self.mask, self.mask])[
                     mask_crop_y1:mask_crop_y2, mask_crop_x1:mask_crop_x2
                 ]
-                self.result_object[mask_y1:mask_y2, mask_x1:mask_x2] = self.object[
+                self.target_object[mask_y1:mask_y2, mask_x1:mask_x2] = self.object[
                     mask_crop_y1:mask_crop_y2, mask_crop_x1:mask_crop_x2
                 ]
 
@@ -82,10 +82,10 @@ class MaskMover():
                 break
             elif key == ord("s"):  # Save results
                 save_results()
-                target_mask_path = path.join(path.dirname(image_path), f"target_mask{i}.png")
-                target_object_path = path.join(path.dirname(image_path), f"target_object{i}.png")
-                cv2.imwrite(target_mask_path, self.result_mask)
-                cv2.imwrite(target_object_path, self.result_object)
+                target_mask_path = path.join(path.dirname(image_path), f"{i}target_mask.png")
+                target_object_path = path.join(path.dirname(image_path), f"{i}target_object.png")
+                cv2.imwrite(target_mask_path, self.target_mask)
+                cv2.imwrite(target_object_path, self.target_object)
                 print(f"Saved target mask to: {target_mask_path}")
                 print(f"Saved target object to: {target_object_path}")
                 break
@@ -95,9 +95,9 @@ class MaskMover():
 
 if __name__ == '__main__':
     i = 2
-    image_path = f"./input_data/background{i}.jpg"  # Replace with your image path
-    mask_path = f"./input_data/mask{i}.png"
-    object_path = f"./input_data/object_cut{i}.jpg"
+    image_path = f"./input_data/{i}background.jpg"  # Replace with your image path
+    mask_path = f"./input_data/{i}mask.png"
+    object_path = f"./input_data/{i}object_cut.jpg"
 
 
     mm = MaskMover(image_path, mask_path, object_path)

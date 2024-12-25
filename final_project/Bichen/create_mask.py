@@ -148,8 +148,18 @@ class MaskPainter():
                 if contours:
                     # Get bounding box for the largest contour
                     x, y, w, h = cv2.boundingRect(max(contours, key=cv2.contourArea))
-                    cropped_object = self.image_copy[y:y+h, x:x+w]
-                    cropped_mask = self.mask[y:y+h, x:x+w]
+                    # y_start = max(0, y - 10)
+                    # y_end = min(self.image_copy.shape[0], y + h + 10)
+                    # x_start = max(0, x - 10)
+                    # x_end = min(self.image_copy.shape[1], x + w + 10)
+
+                    y_start = y
+                    y_end = y + h
+                    x_start = x
+                    x_end = x + w
+
+                    cropped_object = self.image_copy[y_start:y_end, x_start:x_end]
+                    cropped_mask = self.mask[y_start:y_end, x_start:x_end]
                     # Extract only the region under the mask
                     # Save the result
                     object_cut_path = self.mask_path.replace("mask", "object_cut").replace(".png", ".jpg")
@@ -177,8 +187,8 @@ class MaskPainter():
 if __name__ == '__main__':
 
     i = 2
-    image_path = f"./input_data/object{i}.jpg"  # Replace with your image path
-    mask_path = f"./input_data/mask{i}.png"
+    image_path = f"./input_data/{i}object.jpg"  # Replace with your image path
+    mask_path = f"./input_data/{i}mask.png"
 
     painter = MaskPainter(image_path, mask_path)
     painter.create_mask()

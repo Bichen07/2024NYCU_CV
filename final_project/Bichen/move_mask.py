@@ -1,95 +1,104 @@
-import cv2
+import argparse
 import numpy as np
-
-def move_mask(object_image_path, mask_path, background_image_path, output_image_path, output_mask_path):
-    object_image = cv2.imread(object_image_path)
-    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    background_image = cv2.imread(background_image_path)
-
-    if object_image is None or mask is None or background_image is None:
-        raise ValueError("Could not load one or more input images.")
-
-    h_bg, w_bg = background_image.shape[:2]
-    h_mask, w_mask = mask.shape[:2]
-    h_obj, w_obj = object_image.shape[:2]
-
-    overlay = background_image.copy()
-    alpha = 0.5  # Transparency for mask visualization
-
-    offset_x, offset_y = 0, 0  # Initial offsets
-    start_x, start_y = 0, 0
-    dragging = False
-
-    def draw(event, x, y, flags, param):
-        nonlocal offset_x, offset_y, start_x, start_y, dragging
-        if event == cv2.EVENT_LBUTTONDOWN:  # Start dragging
-            start_x, start_y = x, y
-            dragging = True
-        elif event == cv2.EVENT_MOUSEMOVE and dragging:  # Dragging mask
-            offset_x += x - start_x
-            offset_y += y - start_y
-            start_x, start_y = x, y
-        elif event == cv2.EVENT_LBUTTONUP:  # Stop dragging
-            dragging = False
-
-    cv2.namedWindow("Move Mask")
-    cv2.setMouseCallback("Move Mask", draw)
-
-    while True:
-        moved_mask = np.zeros((h_mask, w_mask), dtype=np.uint8)
-        # Calculate the mask's position
-        x_start = max(0, offset_x)
-        y_start = max(0, offset_y)
-        x_end = min(w_bg, x_start + w_mask)
-        y_end = min(h_bg, y_start + h_mask)
-
-        mask_x_start = max(0, -offset_x)
-        mask_y_start = max(0, -offset_y)
-        mask_x_end = mask_x_start + (x_end - x_start)
-        mask_y_end = mask_y_start + (y_end - y_start)
-
-        # Calculate the overlapping region dimensions
-        overlap_width = min(x_end - x_start, mask_x_end - mask_x_start)
-        overlap_height = min(y_end - y_start, mask_y_end - mask_y_start)
-
-        # Ensure the slices match the overlapping region
-        moved_mask[y_start:y_start + overlap_height, x_start:x_start + overlap_width] = \
-            mask[mask_y_start:mask_y_start + overlap_height, mask_x_start:mask_x_start + overlap_width]
-
-        # Overlay the mask onto the background image
-        color_mask = np.zeros_like(background_image)
-        color_mask[y_start:y_start + overlap_height, x_start:x_start + overlap_width] = (0, 255, 0)  # Green mask
-        blended = cv2.addWeighted(overlay, 1 - alpha, color_mask, alpha, 0)
-
-        cv2.imshow("Move Mask", blended)
-        key = cv2.waitKey(1) & 0xFF
-
-        if key == ord('s'):  # Save and exit
-            # Resize mask and object to match the background dimensions
-            resized_mask = cv2.resize(moved_mask, (w_bg, h_bg), interpolation=cv2.INTER_NEAREST)
-            resized_object = cv2.resize(object_image, (w_bg, h_bg), interpolation=cv2.INTER_LINEAR)
-
-            # Extract the object part under the mask
-            final_object = np.zeros_like(background_image)
-            final_object[resized_mask > 0] = resized_object[resized_mask > 0]
-            cv2.imwrite(output_mask_path, resized_mask)
-            cv2.imwrite(output_image_path, final_object)
-
-            print(f"Saved mask to {output_mask_path} and object to {output_image_path}.")
-            break
-        elif key == ord('q'):  # Quit without saving
-            print("Exited without saving.")
-            break
-
-    cv2.destroyAllWindows()
+import cv2
+from os import path
 
 
-if __name__ == "__main__":
-    i = 1
-    object_image_path = f"./input_data/object{i}.jpg"
+class MaskMover():
+    def __init__(self, image_path, mask_path, object_path):
+        self.image = cv2.imread(image_path)
+        self.mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        self.object = cv2.imread(object_path)
+        self.image_h, self.image_w = self.image.shape[:2]
+        self.mask_h, self.mask_w = self.mask.shape[:2]
+        self.offset_x = 0
+        self.offset_y = 0
+        self.dragging = False
+        self.window_name = "Move Mask (Left mouse to move, 's' to save, 'q' to quit)"
+        self.result_mask = np.zeros_like(self.image, dtype=np.uint8)
+        self.result_object = np.zeros_like(self.image, dtype=np.uint8)
+
+    def move_mask(self):
+        def draw_overlay():
+            overlay = self.image.copy()
+            mask_y1 = max(0, self.offset_y)
+            mask_y2 = min(self.image_h, self.offset_y + self.mask_h)
+            mask_x1 = max(0, self.offset_x)
+            mask_x2 = min(self.image_w, self.offset_x + self.mask_w)
+            mask_crop_y1 = max(0, -self.offset_y)
+            mask_crop_y2 = mask_crop_y1 + (mask_y2 - mask_y1)
+            mask_crop_x1 = max(0, -self.offset_x)
+            mask_crop_x2 = mask_crop_x1 + (mask_x2 - mask_x1)
+            if mask_y1 < mask_y2 and mask_x1 < mask_x2:
+                overlay[mask_y1:mask_y2, mask_x1:mask_x2] = cv2.addWeighted(
+                    overlay[mask_y1:mask_y2, mask_x1:mask_x2],
+                    0.5,
+                    cv2.merge([self.mask, self.mask, self.mask])[mask_crop_y1:mask_crop_y2, mask_crop_x1:mask_crop_x2],
+                    0.5,
+                    0
+                )
+            return overlay
+
+        def save_results():
+            mask_y1 = max(0, self.offset_y)
+            mask_y2 = min(self.image_h, self.offset_y + self.mask_h)
+            mask_x1 = max(0, self.offset_x)
+            mask_x2 = min(self.image_w, self.offset_x + self.mask_w)
+            mask_crop_y1 = max(0, -self.offset_y)
+            mask_crop_y2 = mask_crop_y1 + (mask_y2 - mask_y1)
+            mask_crop_x1 = max(0, -self.offset_x)
+            mask_crop_x2 = mask_crop_x1 + (mask_x2 - mask_x1)
+            if mask_y1 < mask_y2 and mask_x1 < mask_x2:
+                self.result_mask[mask_y1:mask_y2, mask_x1:mask_x2] = cv2.merge([self.mask, self.mask, self.mask])[
+                    mask_crop_y1:mask_crop_y2, mask_crop_x1:mask_crop_x2
+                ]
+                self.result_object[mask_y1:mask_y2, mask_x1:mask_x2] = self.object[
+                    mask_crop_y1:mask_crop_y2, mask_crop_x1:mask_crop_x2
+                ]
+
+        def on_mouse(event, x, y, flags, param):
+            nonlocal last_mouse_pos
+            if event == cv2.EVENT_LBUTTONDOWN:
+                self.dragging = True
+                last_mouse_pos = (x, y)
+            elif event == cv2.EVENT_MOUSEMOVE and self.dragging:
+                dx, dy = x - last_mouse_pos[0], y - last_mouse_pos[1]
+                self.offset_x += dx
+                self.offset_y += dy
+                last_mouse_pos = (x, y)
+            elif event == cv2.EVENT_LBUTTONUP:
+                self.dragging = False
+
+        cv2.namedWindow(self.window_name)
+        cv2.setMouseCallback(self.window_name, on_mouse)
+        last_mouse_pos = (0, 0)
+
+        while True:
+            overlay = draw_overlay()
+            cv2.imshow(self.window_name, overlay)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("q"):  # Quit
+                break
+            elif key == ord("s"):  # Save results
+                save_results()
+                target_mask_path = path.join(path.dirname(image_path), f"target_mask{i}.png")
+                target_object_path = path.join(path.dirname(image_path), f"target_object{i}.png")
+                cv2.imwrite(target_mask_path, self.result_mask)
+                cv2.imwrite(target_object_path, self.result_object)
+                print(f"Saved target mask to: {target_mask_path}")
+                print(f"Saved target object to: {target_object_path}")
+                break
+
+        cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    i = 2
+    image_path = f"./input_data/background{i}.jpg"  # Replace with your image path
     mask_path = f"./input_data/mask{i}.png"
-    background_image_path = f"./input_data/background{i}.jpg"
-    output_image_path = f"./input_data/object_move{i}.png"
-    output_mask_path = f"./input_data/mask_move{i}.png"
+    object_path = f"./input_data/object_cut{i}.jpg"
 
-    move_mask(object_image_path, mask_path, background_image_path, output_image_path, output_mask_path)
+
+    mm = MaskMover(image_path, mask_path, object_path)
+    mm.move_mask()

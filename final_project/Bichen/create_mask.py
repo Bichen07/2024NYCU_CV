@@ -176,7 +176,7 @@ class MaskPainter():
 
 if __name__ == '__main__':
 
-    i = 1
+    i = 2
     image_path = f"./input_data/object{i}.jpg"  # Replace with your image path
     mask_path = f"./input_data/mask{i}.png"
 

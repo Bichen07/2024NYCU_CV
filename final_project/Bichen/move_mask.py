@@ -94,7 +94,7 @@ class MaskMover():
 
 
 if __name__ == '__main__':
-    i = 2
+    i = 3
     image_path = f"./input_data/{i}background.jpg"  # Replace with your image path
     mask_path = f"./input_data/{i}mask.png"
     object_path = f"./input_data/{i}object_cut.jpg"

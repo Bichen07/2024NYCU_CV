@@ -4,11 +4,13 @@ import os
 import matplotlib.pyplot as plt
 import random
 import glob
+import poisson
+from os import path
 
 # Stitcher, 
 def stitch(img_left, img_right, blending_mode, ratio, num_iter=1000, threshold=3.0):
     # Ensure the output directory exists
-    os.makedirs("output", exist_ok=True)
+    os.makedirs("output_data", exist_ok=True)
 
     print("crop edges of two images...")
     img_left = img_left[1:-1, 1:-1] # Crop 1 pixel from each edge
@@ -23,16 +25,15 @@ def stitch(img_left, img_right, blending_mode, ratio, num_iter=1000, threshold=3
 
     # Construct the save path
     print(f"step3: draw key points match of {base_name} each images...")
-    save_path = f"output/{base_name}_{i + 1}keyPoint_match_ratio={ratio}.jpg"
+    save_path = f"{output_path}/homo/{base_name}_{i + 1}keyPoint_match_ratio={ratio}.jpg"
     draw_matches(left_match_points, right_match_points, img_left, img_right, save_path=save_path)
 
     print(f"step4: use RANSAC to get best homography matric of {base_name} images...")
     H = RANSAC_homography(left_match_points, right_match_points, num_iter, threshold)
 
     print("step5: warp and blend of two images...")
-    img_wrap = warp(img_left, img_right, H, blending_mode, base_name) 
-    
-    return img_wrap
+    warp(img_left, img_right, H, base_name) 
+
 
 def detect_and_describe(img_left, img_right):
     gray1 = cv2.cvtColor(img_left, cv2.COLOR_BGR2GRAY)
@@ -157,7 +158,7 @@ def get_homography(points_in_img_left, points_in_img_right):
     H = V[-1].reshape(3, 3)                                     
     return H / H[2, 2]
 
-def warp(img_left, img_right, H, blending_mode, fileName1):
+def warp(img_left, img_right, H, base_name):
     # Retrieve dimensions
     h_left, w_left = img_left.shape[:2] 
     h_right, w_right = img_right.shape[:2] # 0 x down height, 1 y right width, 2 z depth
@@ -211,95 +212,41 @@ def warp(img_left, img_right, H, blending_mode, fileName1):
     img_left1[-h_min:h_left - h_min, -w_min:w_left - w_min] = img_left  # Shift img_left down by -h_min
 
 
-    saveFilePath = f"output/warp_{fileName1}_left.jpg"
+    saveFilePath = f"{output_path}homo/{base_name}_left.jpg"
     cv2.imwrite(saveFilePath, img_left1)
-    saveFilePath = f"output/warp_{fileName1}_righttrans.jpg"
+    saveFilePath = f"{output_path}homo/{base_name}_righttrans.jpg"
     cv2.imwrite(saveFilePath, img_trans)
 
-    # Apply blending if specified
-    if blending_mode == "linear_blending":
-        img_wrap = linear_blending(img_left1, img_trans)
-    else:  # no blending
-        img_wrap = np.zeros_like(img_trans)
-        img_wrap[-h_min:h_left - h_min, :w_left] = img_left  # Shift img_left down by -h_min
-        img_wrap = np.where(img_trans > 0, img_trans, img_wrap)  # Overlay img_trans over img_wrap
-
-    return img_wrap
-
-def linear_blending(img_left, img_trans):
-    h_trans, w_trans = img_trans.shape[:2]
-    h_left, w_left = img_left.shape[:2]
-    # Initialize masks to detect non-zero areas in both images
-    mask_left = np.any(img_left > 0, axis=2).astype(np.float32) # return True or False
-    mask_trans = np.any(img_trans > 0, axis=2).astype(np.float32)
-
-    # Calculate overlap mask
-    overlap_mask = np.zeros((h_trans, w_trans), dtype="int")
-    for i in range(h_left):
-        for j in range(w_left):
-            if mask_left[i, j] == True and mask_trans[i, j] == True:
-                overlap_mask[i, j] = 1
-
-    # Create an alpha mask that linearly transitions in the overlapping region
-    alpha_mask = np.zeros((h_trans, w_trans), dtype=np.float32)
-    for i in range(h_trans):  # Loop through each row
-        minIdx, maxIdx = -1, -1
-        for j in range(w_trans):  # Find the overlap range for each row
-            if overlap_mask[i, j] == 1 and minIdx == -1:
-                minIdx = j
-            if overlap_mask[i, j] == 1:
-                maxIdx = j
-
-        # Skip rows without overlap or with only one overlapping pixel
-        if minIdx == -1 or minIdx == maxIdx:
-            continue
-
-        # Create a gradient from 1 to 0 over the overlap region
-        for j in range(minIdx, maxIdx + 1):
-            alpha_mask[i, j] = 1 - (j - minIdx) / (maxIdx - minIdx)
-
-    img_wrap = np.copy(img_trans)
-    img_wrap[:h_left, :w_left] = np.where(img_left > 0, img_left, img_wrap[:h_left, :w_left])
-
-    # Blend the images using the alpha mask
-    for i in range(h_trans):
-        for j in range(w_trans):
-            if ( np.count_nonzero(overlap_mask[i, j]) > 0):
-                img_wrap[i, j] = alpha_mask[i, j] * img_left[i, j] + (1 - alpha_mask[i, j]) * img_trans[i, j]
-
-    return img_wrap
+    # Save the arrays
+    np.save(f"{output_path}homo/{base_name}_left1.npy", img_left1)
+    np.save(f"{output_path}homo/{base_name}_righttrans.npy", img_trans)
 
 if __name__ == "__main__":
-    # fileNameList = [('S')] 
-    # fileNameList = [('TV'), ('S'), ('hill')]
-    fileNameList = [('hill')]
-    # fileNameList = [('TV')]
-    # fileNameList = [('building')]
-    # fileNameList = [('guiter')]
 
+    base_name = "hill"
+    # base_name = 'building'
 
-    # "noblending" , "linear_blending"
-    blending_mode = "linear_blending"
+    blending_mode = "poisson_blending"
+    # blending_mode = "linear_blending"
     ratio = 0.5
     num_iter = 1000
     threshold=1
-    # src_path = "data/"
-    src_path = "input_data/homo/"
+    input_path = "input_data/homo/"
+    output_path = "output_data/"
 
-for base_name in fileNameList:
-    # Find all images that match the pattern, e.g., building1.jpg, building2.jpg, etc.
-    image_files = sorted(glob.glob(f"{src_path}{base_name}*.jpg"))
+    # Find all images that match the pattern, e.g., hill1.jpg, hill2.jpg, etc.
+    image_files = sorted(glob.glob(f"{input_path}{base_name}*.jpg"))
     n = len(image_files)  # Total number of matching images
 
     if n < 2:
         print(f"Error: Not enough images found for {base_name} to stitch.")
-        continue
+        exit()
 
     # Initialize the first image as the base for stitching
     img_wrap = cv2.imread(image_files[0])
     if img_wrap is None:
         print(f"Error: Could not load {image_files[0]}")
-        continue
+        exit()
 
     # Stitch sequential images
     for i in range(1, n):
@@ -309,15 +256,5 @@ for base_name in fileNameList:
             break
 
         # Stitch the current `img_wrap` with the next image in the sequence
-        img_wrap = stitch(img_wrap, img_right, blending_mode, ratio, num_iter, threshold)
-        # Save each intermediate result
-        saveFilePath = f"output/warp_{base_name}_{blending_mode}.jpg"
-        cv2.imwrite(saveFilePath, img_wrap)
-    # # Plot and save the stitched image
-    # plt.figure(13)
-    # plt.title("warp_img")
-    # plt.imshow(img_wrap[:,:,::-1].astype(int))  # Rearranges the channels from BGR to RGB
+        stitch(img_wrap, img_right, blending_mode, ratio, num_iter, threshold)
 
-    saveFilePath = f"output/warp_{base_name}_{blending_mode}.jpg"
-    # saveFilePath = f"output/warp_{imgs}_{blending_mode}_ratio={ratio}_threshold={threshold}.jpg"
-    cv2.imwrite(saveFilePath, img_wrap)

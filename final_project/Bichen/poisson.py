@@ -35,14 +35,9 @@ def poisson_edit(target_object, background, target_mask):
     Perez et. al., "Poisson Image Editing", 2003.
     """
 
-    y_max, x_max = background.shape[:-1]
-    y_min, x_min = 0, 0
-
-    background_width = x_max - x_min
-    background_high = y_max - y_min
+    background_high, background_width = background.shape[:-1]
     
     mat_A = laplacian_matrix(background_high, background_width)
-
     laplacian = mat_A.tocsc() # convert lil_matrix to csc_matrix
 
     # set the region outside the mask to identity    
@@ -57,48 +52,44 @@ def poisson_edit(target_object, background, target_mask):
                 mat_A[k, k - background_width] = 0
 
     mat_A = mat_A.tocsc()
-
     mask_flat = target_mask.flatten()    
+    result_image = np.zeros_like(background)
     for channel in range(target_object.shape[2]):
-        object_flat = target_object[y_min:y_max, x_min:x_max, channel].flatten()
-        background_flat = background[y_min:y_max, x_min:x_max, channel].flatten()        
+        object_flat = target_object[0:background_high, 0:background_width, channel].flatten()
+        background_flat = background[0:background_high, 0:background_width, channel].flatten()        
 
-        # calculate matrix b by 4 * pixel(i,j) - pixel(i-1, j) - pixel(i+1, j) - pixel(i, j-1) - pixel(i, j+1)
+        # calculate matrix b by 4 * pixel(i,j) - pixel(i-1, j) - pixel(i+1, j) - pixel(i, j-1) - pixel(i, j+1) of target object
         mat_b = laplacian.dot(object_flat)
 
-        # outside the mask:
+        # outside the mask: (frame of object > frame of mask)
         mat_b[mask_flat==0] = background_flat[mask_flat==0]
-        
-        x = spsolve(mat_A, mat_b)
-        #print(x.shape)
-        x = x.reshape((background_high, background_width))
-        #print(x.shape)
-        x[x > 255] = 255
-        x[x < 0] = 0
-        x = x.astype('uint8')
-        print(x.shape)
 
-        background[y_min:y_max, x_min:x_max, channel] = x
+        u = spsolve(mat_A, mat_b)
+        u = u.reshape((background_high, background_width))
+        u[u > 255] = 255
+        u[u < 0] = 0
+        u = u.astype('uint8')
 
-    return background
+        result_image[0:background_high, 0:background_width, channel] = u
+
+    return result_image
 
 def main():    
     scr_dir = './input_data'
-    out_dir = scr_dir
-    i = 2
+    out_dir = './output_data'
+    i = 3
     target_object = cv2.imread(path.join(scr_dir, f"{i}target_object.png")) 
     background = cv2.imread(path.join(scr_dir, f"{i}background.jpg"))    
     target_mask = cv2.imread(path.join(scr_dir, f"{i}target_mask.png"), 
                       cv2.IMREAD_GRAYSCALE) 
-
-    # Check unique values in the mask
-    unique_values = np.unique(target_mask)
-    print(f"Unique values in the target mask: {unique_values}")
     
     result = poisson_edit(target_object, background, target_mask)
 
     cv2.imwrite(path.join(out_dir, f"{i}possion.png"), result)
-    
+
+    # new_blend = np.zeros_like(background)
+    # new_blend[target_mask == 0] = background[target_mask == 0]
+    # cv2.imwrite(path.join(out_dir, f"{i}mat_a.png"), new_blend)
 
 if __name__ == '__main__':
     main()

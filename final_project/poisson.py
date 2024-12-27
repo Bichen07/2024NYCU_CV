@@ -77,7 +77,7 @@ def poisson_edit(target_object, background, target_mask):
 def main():    
     scr_dir = './input_data'
     out_dir = './output_data'
-    i = 3
+    i = 5
     target_object = cv2.imread(path.join(scr_dir, f"{i}target_object.png")) 
     background = cv2.imread(path.join(scr_dir, f"{i}background.jpg"))    
     target_mask = cv2.imread(path.join(scr_dir, f"{i}target_mask.png"), 

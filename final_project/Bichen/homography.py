@@ -8,7 +8,7 @@ import poisson
 from os import path
 
 # Stitcher, 
-def stitch(img_left, img_right, blending_mode, ratio, num_iter=1000, threshold=3.0):
+def stitch(img_left, img_right, ratio, num_iter=1000, threshold=3.0):
     # Ensure the output directory exists
     os.makedirs("output_data", exist_ok=True)
 
@@ -19,14 +19,14 @@ def stitch(img_left, img_right, blending_mode, ratio, num_iter=1000, threshold=3
     print(f"step1: get key points of {base_name} each image...")
     kp_left, kp_right, des_left, des_right = detect_and_describe(img_left, img_right)
 
-    print(f"step2: {i + 1}match key points of {base_name} each images with ratio {ratio}...")
+    # print(f"step2: {i + 1}match key points of {base_name} each images with ratio {ratio}...")
     left_match_points, right_match_points = match_keypoints(kp_left, kp_right, des_left, des_right, ratio)
     print(f"The number of {base_name} matching points:", len(left_match_points))
 
     # Construct the save path
     print(f"step3: draw key points match of {base_name} each images...")
-    save_path = f"{output_path}/homo/{base_name}_{i + 1}keyPoint_match_ratio={ratio}.jpg"
-    draw_matches(left_match_points, right_match_points, img_left, img_right, save_path=save_path)
+    # save_path = f"{output_path}/homo/{base_name}_{i + 1}keyPoint_match_ratio={ratio}.jpg"
+    # draw_matches(left_match_points, right_match_points, img_left, img_right, save_path=save_path)
 
     print(f"step4: use RANSAC to get best homography matric of {base_name} images...")
     H = RANSAC_homography(left_match_points, right_match_points, num_iter, threshold)
@@ -223,8 +223,8 @@ def warp(img_left, img_right, H, base_name):
 
 if __name__ == "__main__":
 
-    base_name = "hill"
-    # base_name = 'building'
+    # base_name = "hill", "S", "TV"
+    base_name = 'TV'
 
     blending_mode = "poisson_blending"
     # blending_mode = "linear_blending"
@@ -234,27 +234,23 @@ if __name__ == "__main__":
     input_path = "input_data/homo/"
     output_path = "output_data/"
 
-    # Find all images that match the pattern, e.g., hill1.jpg, hill2.jpg, etc.
-    image_files = sorted(glob.glob(f"{input_path}{base_name}*.jpg"))
-    n = len(image_files)  # Total number of matching images
+    # Define specific file paths for building1 and building2
+    img_left_path = f"{input_path}{base_name}1.jpg"
+    img_right_path = f"{input_path}{base_name}2.jpg"
 
-    if n < 2:
-        print(f"Error: Not enough images found for {base_name} to stitch.")
+    # Read the images
+    img_left = cv2.imread(img_left_path)
+    img_right = cv2.imread(img_right_path)
+
+    # Error handling for missing images
+    if img_left is None:
+        print(f"Error: Could not load {img_left_path}")
+        exit()
+    if img_right is None:
+        print(f"Error: Could not load {img_right_path}")
         exit()
 
-    # Initialize the first image as the base for stitching
-    img_wrap = cv2.imread(image_files[0])
-    if img_wrap is None:
-        print(f"Error: Could not load {image_files[0]}")
-        exit()
+    # Stitch the two images
+    stitch(img_left, img_right, ratio, num_iter, threshold)
 
-    # Stitch sequential images
-    for i in range(1, n):
-        img_right = cv2.imread(image_files[i])
-        if img_right is None:
-            print(f"Error: Could not load {image_files[i]}")
-            break
-
-        # Stitch the current `img_wrap` with the next image in the sequence
-        stitch(img_wrap, img_right, blending_mode, ratio, num_iter, threshold)
-
+    # stitch(cv2.imread("input_data/homo/building_poisson_blending.jpg"), cv2.imread("input_data/homo/building3.jpg"), ratio, num_iter, threshold)

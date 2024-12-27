@@ -33,10 +33,6 @@ def poisson_blending(img_left, img_righttrans):
                 overlap_mask[i, j] = 1
 
     overlap_mask = overlap_mask.astype(np.uint8)
-    # Shrink overlap region edges by 2 pixels
-    kernel = np.ones((5, 5), np.uint8)  # Define a kernel of size 5x5 (to erode 2 pixels)
-    shrunk_mask = cv2.erode(overlap_mask, kernel, iterations=1)  # Shrink the mask
-    overlap_mask = shrunk_mask  # Update the overlap mask
 
     # Create target_mask
     target_mask = np.zeros((h_trans, w_trans), dtype=np.uint8)  # Same size as img_left, all black
@@ -58,9 +54,9 @@ def poisson_blending(img_left, img_righttrans):
     target_mask_path = path.join(path.dirname(folder), f"{name}_target_mask.png")
     target_object_path = path.join(path.dirname(folder), f"{name}_target_object.png")
     background_path = path.join(path.dirname(folder), f"{name}_background.png")
-    cv2.imwrite(target_mask_path, target_mask)
-    cv2.imwrite(target_object_path, target_object)
-    cv2.imwrite(background_path, background)
+    # cv2.imwrite(target_mask_path, target_mask)
+    # cv2.imwrite(target_object_path, target_object)
+    # cv2.imwrite(background_path, background)
 
     img_wrap = poisson.poisson_edit(target_object, background, target_mask)
 
@@ -111,7 +107,8 @@ def linear_blending(img_left, img_trans):
 
 if __name__ == "__main__":
 
-    name = "hill"
+    # name = 'building', "hill", "S", "TV"
+    name = "TV"
     folder = "output_data/"
 
     # img_left = cv2.imread(f"{folder}{name}_left.jpg")
